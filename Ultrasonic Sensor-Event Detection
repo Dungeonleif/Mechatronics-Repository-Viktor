@@ -28,16 +28,24 @@ void loop()
    
     if (distance < 20 && gros == 1)
     {
-      Serial.print ("Event Detected");
+      Serial.print ("Object Detected & Present ");
        Serial.print ("Distance:");
     Serial.println (distance);
       gros = 0;
     }
     else if (distance > 20 && gros == 0)
     {
-    Serial.print ("Event Ended");
+   if (gros == 0)
+   {
+     Serial.print ("Detected Object Is Gone ");
      Serial.print ("Distance:");
     Serial.println (distance);
+   }
+       else
+         delay (100);
+    Serial.println ("Waiting to detect an object");
+      
   gros = 1;
     }
+ 
 }
