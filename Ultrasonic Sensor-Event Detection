@@ -1,0 +1,43 @@
+int trig_pin = 3;
+int echo_pin = 2;
+
+int distance;
+long duration;
+int gros;
+  
+  
+void setup()
+{
+  pinMode (trig_pin, OUTPUT);
+  pinMode (echo_pin, INPUT);
+  Serial.begin(9600);
+}
+
+void loop()
+{
+  digitalWrite (trig_pin, LOW);
+    delayMicroseconds(2);
+    
+  digitalWrite (trig_pin, HIGH);
+    delayMicroseconds(10);
+  digitalWrite (trig_pin, LOW);
+    
+  duration = pulseIn (echo_pin, HIGH);
+    distance = duration * 0.034 / 2;
+    
+   
+    if (distance < 20 && gros == 1)
+    {
+      Serial.print ("Event Detected");
+       Serial.print ("Distance:");
+    Serial.println (distance);
+      gros = 0;
+    }
+    else if (distance > 20 && gros == 0)
+    {
+    Serial.print ("Event Ended");
+     Serial.print ("Distance:");
+    Serial.println (distance);
+  gros = 1;
+    }
+}
