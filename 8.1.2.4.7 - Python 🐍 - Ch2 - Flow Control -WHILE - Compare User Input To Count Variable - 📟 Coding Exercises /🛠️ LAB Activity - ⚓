@@ -1,0 +1,17 @@
+user_input = input("Enter an integer 1-10 : ")
+x=0
+try:
+    # Attempt to convert the input to an integer
+    number = int(user_input)
+    print(f"Valid integer")
+except ValueError:
+    # Handle the error if the conversion fails
+    print(f"Not a valid integer.")
+    
+print(user_input)
+while x <= 10:
+    if x != user_input :
+        x += 1
+        print(x)
+x = user_input
+print(f"The User variable is equal to the count variable. User variable = {user_input} Count variable = {x}")
