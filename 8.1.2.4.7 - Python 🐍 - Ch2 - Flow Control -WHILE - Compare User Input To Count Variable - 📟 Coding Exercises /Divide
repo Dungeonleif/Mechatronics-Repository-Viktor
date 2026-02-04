@@ -1,0 +1,20 @@
+user_input = input("Input number greater than 20")
+#Ask user for an integer number greater than 20
+try:
+    # Attempt to convert the input to an integer
+    number = int(user_input)
+    print(f"Valid integer")
+except ValueError:
+    # Handle the error if the conversion fails
+    print(f"Not a valid integer.")
+#Don't forget test the <user_number> to see if it's an integer
+count = 0
+#set our initial <count> variable to 0
+while user_number > 1 :
+#while our <User_number> is greater than 1
+    variable = user_input / 2
+    user_input = variable
+    count += 1
+#divide the <user_number> by 2
+#increase our <count> by 1
+#end
