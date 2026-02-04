@@ -1,0 +1,4 @@
+def convert (USD = 15) :
+    canadian_dollars = (USD * 1.37)
+    print (canadian_dollars)
+convert ()
