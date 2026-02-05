@@ -1,0 +1,18 @@
+def my_math(x,y) :
+    z=x+y
+    return z
+
+def main():
+    my_num_1 = 5
+    my_num_2 = 2
+    sum = my_math(my_num_1, my_num_2)
+    if sum % 2 == 0 :
+        # Attempt to convert the input to an integer
+        print("The sum of", my_num_1, "+", my_num_2, "=",sum)
+    else :
+        # Handle the error if the conversion fails
+        sum += 1
+        print("The sum of", my_num_1, "+", my_num_2, "=",sum)
+
+main()
+# print('Done with Challenge 1')
