@@ -1,0 +1,22 @@
+def my_math(x,y,a) :
+    if a == 1 :
+        z=x+y
+    elif a == 2 :
+        z=x-y
+    elif a == 3 :
+        z=x*y
+    elif a == 4 :
+        z=x/y
+    return z
+add = 1
+sub = 2
+mul = 3
+div = 4
+def main():
+  my_num_1 = 5
+  my_num_2 = 2
+  my_num_3 = div
+  sum = my_math(my_num_1, my_num_2, my_num_3)
+  print(my_num_1, "and", my_num_2, "=",sum)
+
+main()
