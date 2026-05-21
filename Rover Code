@@ -1,0 +1,687 @@
+from flask import Flask, render_template_string, Response
+import RPi.GPIO as GPIO
+import socket
+import time
+import threading
+import cv2
+import numpy as np
+
+# =========================================================
+# FLASK
+# =========================================================
+app = Flask(__name__)
+
+# =========================================================
+# GPIO CLEANUP FIX
+# =========================================================
+try:
+    GPIO.cleanup()
+except:
+    pass
+
+# =========================================================
+# MOTOR PINS
+# =========================================================
+LEFT_IN1  = 17
+LEFT_IN2  = 27
+RIGHT_IN1 = 22
+RIGHT_IN2 = 23
+
+# =========================================================
+# ULTRASONIC SENSOR
+# =========================================================
+TRIG = 5
+ECHO = 6
+
+# =========================================================
+# SETTINGS
+# =========================================================
+FRAME_WIDTH = 640
+FRAME_HEIGHT = 480
+
+OBSTACLE_DISTANCE_CM = 20
+
+# =========================================================
+# GPIO SETUP
+# =========================================================
+GPIO.setmode(GPIO.BCM)
+GPIO.setwarnings(False)
+
+for pin in (
+    LEFT_IN1,
+    LEFT_IN2,
+    RIGHT_IN1,
+    RIGHT_IN2
+):
+    GPIO.setup(pin, GPIO.OUT)
+
+GPIO.setup(TRIG, GPIO.OUT)
+GPIO.setup(ECHO, GPIO.IN)
+
+GPIO.output(TRIG, False)
+
+time.sleep(2)
+
+# =========================================================
+# CAMERA
+# =========================================================
+camera = cv2.VideoCapture(0)
+
+camera.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
+camera.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
+
+# =========================================================
+# GLOBALS
+# =========================================================
+current_action = "Stopped"
+
+auto_mode = False
+
+orange_detected = False
+orange_x = None
+
+# =========================================================
+# MOTOR FUNCTIONS
+# =========================================================
+def move_forward():
+
+    global current_action
+
+    current_action = "Forward"
+
+    GPIO.output(LEFT_IN1, GPIO.HIGH)
+    GPIO.output(LEFT_IN2, GPIO.LOW)
+
+    GPIO.output(RIGHT_IN1, GPIO.HIGH)
+    GPIO.output(RIGHT_IN2, GPIO.LOW)
+
+def move_backward():
+
+    global current_action
+
+    current_action = "Backward"
+
+    GPIO.output(LEFT_IN1, GPIO.LOW)
+    GPIO.output(LEFT_IN2, GPIO.HIGH)
+
+    GPIO.output(RIGHT_IN1, GPIO.LOW)
+    GPIO.output(RIGHT_IN2, GPIO.HIGH)
+
+def turn_left():
+
+    global current_action
+
+    current_action = "Left"
+
+    GPIO.output(LEFT_IN1, GPIO.LOW)
+    GPIO.output(LEFT_IN2, GPIO.HIGH)
+
+    GPIO.output(RIGHT_IN1, GPIO.HIGH)
+    GPIO.output(RIGHT_IN2, GPIO.LOW)
+
+def turn_right():
+
+    global current_action
+
+    current_action = "Right"
+
+    GPIO.output(LEFT_IN1, GPIO.HIGH)
+    GPIO.output(LEFT_IN2, GPIO.LOW)
+
+    GPIO.output(RIGHT_IN1, GPIO.LOW)
+    GPIO.output(RIGHT_IN2, GPIO.HIGH)
+
+def stop():
+
+    global current_action
+
+    current_action = "Stopped"
+
+    for pin in (
+        LEFT_IN1,
+        LEFT_IN2,
+        RIGHT_IN1,
+        RIGHT_IN2
+    ):
+        GPIO.output(pin, GPIO.LOW)
+
+# =========================================================
+# ULTRASONIC DISTANCE
+# =========================================================
+def get_distance():
+
+    GPIO.output(TRIG, True)
+    time.sleep(0.00001)
+    GPIO.output(TRIG, False)
+
+    start = time.time()
+    timeout = start + 0.04
+
+    while GPIO.input(ECHO) == 0:
+
+        start = time.time()
+
+        if start > timeout:
+            return None
+
+    stop_time = time.time()
+
+    while GPIO.input(ECHO) == 1:
+
+        stop_time = time.time()
+
+        if stop_time > timeout:
+            return None
+
+    distance = (stop_time - start) * 17150
+
+    return round(distance, 2)
+
+# =========================================================
+# AUTO MODE AI
+# =========================================================
+def auto_drive():
+
+    global auto_mode
+    global orange_detected
+    global orange_x
+
+    center = FRAME_WIDTH // 2
+
+    while True:
+
+        if auto_mode:
+
+            distance = get_distance()
+
+            # =================================================
+            # OBSTACLE AVOIDANCE
+            # =================================================
+            if (
+                distance is not None and
+                distance < OBSTACLE_DISTANCE_CM
+            ):
+
+                stop()
+                time.sleep(0.2)
+
+                move_backward()
+                time.sleep(0.5)
+
+                stop()
+                time.sleep(0.2)
+
+                turn_right()
+                time.sleep(0.7)
+
+                stop()
+                time.sleep(0.2)
+
+                continue
+
+            # =================================================
+            # ORANGE TRACKING
+            # =================================================
+            if orange_detected and orange_x is not None:
+
+                # LEFT
+                if orange_x < center - 80:
+
+                    turn_left()
+
+                # RIGHT
+                elif orange_x > center + 80:
+
+                    turn_right()
+
+                # CENTER
+                else:
+
+                    move_forward()
+
+            else:
+
+                # Search for orange object
+                turn_right()
+
+        time.sleep(0.05)
+
+# Start AI thread
+threading.Thread(
+    target=auto_drive,
+    daemon=True
+).start()
+
+# =========================================================
+# VIDEO STREAM + ORANGE DETECTION
+# =========================================================
+def generate_frames():
+
+    global orange_detected
+    global orange_x
+
+    while True:
+
+        success, frame = camera.read()
+
+        if not success:
+            break
+
+        frame = cv2.resize(
+            frame,
+            (FRAME_WIDTH, FRAME_HEIGHT)
+        )
+
+        hsv = cv2.cvtColor(
+            frame,
+            cv2.COLOR_BGR2HSV
+        )
+
+        # =================================================
+        # ORANGE COLOR RANGE
+        # =================================================
+        lower_orange = np.array([5, 120, 120])
+        upper_orange = np.array([25, 255, 255])
+
+        mask = cv2.inRange(
+            hsv,
+            lower_orange,
+            upper_orange
+        )
+
+        kernel = np.ones((5, 5), np.uint8)
+
+        mask = cv2.erode(mask, kernel)
+        mask = cv2.dilate(mask, kernel)
+
+        contours, _ = cv2.findContours(
+            mask,
+            cv2.RETR_TREE,
+            cv2.CHAIN_APPROX_SIMPLE
+        )
+
+        orange_detected = False
+        orange_x = None
+
+        for contour in contours:
+
+            area = cv2.contourArea(contour)
+
+            if area > 1500:
+
+                x, y, w, h = cv2.boundingRect(contour)
+
+                orange_x = x + (w // 2)
+                orange_detected = True
+
+                cv2.rectangle(
+                    frame,
+                    (x, y),
+                    (x + w, y + h),
+                    (0, 140, 255),
+                    3
+                )
+
+                cv2.putText(
+                    frame,
+                    "ORANGE TARGET",
+                    (x, y - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.8,
+                    (0, 140, 255),
+                    2
+                )
+
+                cv2.circle(
+                    frame,
+                    (orange_x, y + h // 2),
+                    6,
+                    (255, 255, 255),
+                    -1
+                )
+
+                break
+
+        # =================================================
+        # STATUS TEXT
+        # =================================================
+        cv2.putText(
+            frame,
+            current_action,
+            (10, 40),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (0, 255, 0),
+            2
+        )
+
+        cv2.putText(
+            frame,
+            f"AUTO: {'ON' if auto_mode else 'OFF'}",
+            (10, 80),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (255, 255, 255),
+            2
+        )
+
+        ret, buffer = cv2.imencode('.jpg', frame)
+
+        frame = buffer.tobytes()
+
+        yield (
+            b'--frame\r\n'
+            b'Content-Type: image/jpeg\r\n\r\n' +
+            frame +
+            b'\r\n'
+        )
+
+# =========================================================
+# GET IP
+# =========================================================
+def get_ip():
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    try:
+
+        s.connect(("8.8.8.8", 80))
+
+        ip = s.getsockname()[0]
+
+    except:
+
+        ip = "Unknown"
+
+    finally:
+
+        s.close()
+
+    return ip
+
+# =========================================================
+# HTML
+# =========================================================
+HTML = """
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>Orange Rover</title>
+
+<style>
+
+body {
+    background: #111;
+    color: white;
+    text-align: center;
+    font-family: Arial;
+}
+
+img {
+    width: 640px;
+    border-radius: 10px;
+    border: 4px solid #333;
+    margin-top: 20px;
+}
+
+.info {
+    margin: 20px;
+    font-size: 22px;
+}
+
+.instructions {
+    margin-top: 20px;
+    font-size: 20px;
+    color: orange;
+}
+
+button {
+    width: 220px;
+    height: 60px;
+    margin: 10px;
+    font-size: 18px;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+}
+
+.auto {
+    background: green;
+    color: white;
+}
+
+.stop {
+    background: red;
+    color: white;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h1>🟠 Orange Auto Rover</h1>
+
+<div class="info">
+
+<p><b>IP:</b> {{ ip }}</p>
+
+<p><b>Status:</b> {{ action }}</p>
+
+<p><b>Auto Mode:</b> {{ auto }}</p>
+
+</div>
+
+<img src="/video_feed">
+
+<div class="instructions">
+
+<p>
+Hold Keys To Drive:<br><br>
+
+W = Forward<br>
+S = Backward<br>
+A = Left<br>
+D = Right
+</p>
+
+</div>
+
+<button class="auto" onclick="toggleAuto()">
+Toggle Auto Mode
+</button>
+
+<button class="stop" onclick="stopRobot()">
+STOP
+</button>
+
+<script>
+
+let keysPressed = {}
+
+function sendCommand(command) {
+    fetch("/" + command)
+}
+
+document.addEventListener("keydown", function(event) {
+
+    let key = event.key.toLowerCase()
+
+    if (keysPressed[key]) {
+        return
+    }
+
+    keysPressed[key] = true
+
+    // Disable manual control during auto mode
+    if ("{{ auto }}" === "ON") {
+        return
+    }
+
+    if (key === "w") {
+        sendCommand("forward")
+    }
+
+    else if (key === "s") {
+        sendCommand("backward")
+    }
+
+    else if (key === "a") {
+        sendCommand("left")
+    }
+
+    else if (key === "d") {
+        sendCommand("right")
+    }
+
+})
+
+document.addEventListener("keyup", function(event) {
+
+    let key = event.key.toLowerCase()
+
+    delete keysPressed[key]
+
+    if (
+        key === "w" ||
+        key === "s" ||
+        key === "a" ||
+        key === "d"
+    ) {
+
+        sendCommand("stop")
+    }
+
+})
+
+function toggleAuto() {
+
+    fetch("/toggle_auto")
+    .then(() => location.reload())
+}
+
+function stopRobot() {
+
+    fetch("/stop")
+    .then(() => location.reload())
+}
+
+</script>
+
+</body>
+</html>
+"""
+
+# =========================================================
+# ROUTES
+# =========================================================
+@app.route("/")
+def home():
+
+    return render_template_string(
+        HTML,
+        ip=get_ip(),
+        action=current_action,
+        auto="ON" if auto_mode else "OFF"
+    )
+
+@app.route("/forward")
+def forward():
+
+    if not auto_mode:
+        move_forward()
+
+    return "OK"
+
+@app.route("/backward")
+def backward():
+
+    if not auto_mode:
+        move_backward()
+
+    return "OK"
+
+@app.route("/left")
+def left():
+
+    if not auto_mode:
+        turn_left()
+
+    return "OK"
+
+@app.route("/right")
+def right():
+
+    if not auto_mode:
+        turn_right()
+
+    return "OK"
+
+@app.route("/stop")
+def stop_route():
+
+    global auto_mode
+
+    stop()
+
+    return "STOPPED"
+
+@app.route("/toggle_auto")
+def toggle_auto():
+
+    global auto_mode
+
+    auto_mode = not auto_mode
+
+    if not auto_mode:
+        stop()
+
+    return "AUTO TOGGLED"
+
+# =========================================================
+# VIDEO FEED
+# =========================================================
+@app.route('/video_feed')
+def video_feed():
+
+    return Response(
+        generate_frames(),
+        mimetype='multipart/x-mixed-replace; boundary=frame'
+    )
+
+# =========================================================
+# CLEANUP
+# =========================================================
+def cleanup():
+
+    stop()
+
+    camera.release()
+
+    GPIO.cleanup()
+
+# =========================================================
+# MAIN
+# =========================================================
+if __name__ == "__main__":
+
+    try:
+
+        print("Starting Orange Auto Rover...")
+        print(f"Open browser: http://{get_ip()}:5000")
+
+        app.run(
+            host="0.0.0.0",
+            port=5000,
+            threaded=True,
+            debug=False
+        )
+
+    finally:
+
+        cleanup()
+
+
