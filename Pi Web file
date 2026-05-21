@@ -1,0 +1,249 @@
+from flask import Flask, render_template_string
+import socket
+import os
+import time
+import psutil
+
+app = Flask(__name__)
+
+# =========================================================
+# GET PI IP ADDRESS
+# =========================================================
+def get_ip():
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    try:
+
+        s.connect(("8.8.8.8", 80))
+
+        ip = s.getsockname()[0]
+
+    except:
+
+        ip = "Unknown"
+
+    finally:
+
+        s.close()
+
+    return ip
+
+# =========================================================
+# CPU TEMPERATURE
+# =========================================================
+def get_cpu_temp():
+
+    try:
+
+        temp = os.popen(
+            "vcgencmd measure_temp"
+        ).readline()
+
+        return temp.replace("temp=", "").strip()
+
+    except:
+
+        return "Unavailable"
+
+# =========================================================
+# CPU USAGE
+# =========================================================
+def get_cpu_usage():
+
+    return f"{psutil.cpu_percent()}%"
+
+# =========================================================
+# RAM USAGE
+# =========================================================
+def get_ram_usage():
+
+    ram = psutil.virtual_memory()
+
+    return f"{ram.percent}%"
+
+# =========================================================
+# DISK USAGE
+# =========================================================
+def get_disk_usage():
+
+    disk = psutil.disk_usage('/')
+
+    return f"{disk.percent}%"
+
+# =========================================================
+# UPTIME
+# =========================================================
+def get_uptime():
+
+    uptime_seconds = time.time() - psutil.boot_time()
+
+    hours = int(uptime_seconds // 3600)
+
+    minutes = int((uptime_seconds % 3600) // 60)
+
+    return f"{hours}h {minutes}m"
+
+# =========================================================
+# HTML
+# =========================================================
+HTML = """
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>Raspberry Pi Dashboard</title>
+
+<meta http-equiv="refresh" content="2">
+
+<style>
+
+body {
+
+    background: #111;
+    color: white;
+    font-family: Arial;
+    text-align: center;
+}
+
+h1 {
+
+    margin-top: 30px;
+    font-size: 42px;
+}
+
+.container {
+
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+
+    margin-top: 40px;
+}
+
+.card {
+
+    background: #222;
+
+    width: 260px;
+
+    margin: 15px;
+
+    padding: 25px;
+
+    border-radius: 15px;
+
+    box-shadow: 0px 0px 15px rgba(0,0,0,0.5);
+}
+
+.card h2 {
+
+    color: orange;
+}
+
+.value {
+
+    font-size: 32px;
+
+    margin-top: 15px;
+}
+
+.footer {
+
+    margin-top: 40px;
+
+    color: #888;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h1>🖥 Raspberry Pi Dashboard</h1>
+
+<div class="container">
+
+    <div class="card">
+        <h2>IP Address</h2>
+        <div class="value">{{ ip }}</div>
+    </div>
+
+    <div class="card">
+        <h2>CPU Temp</h2>
+        <div class="value">{{ temp }}</div>
+    </div>
+
+    <div class="card">
+        <h2>CPU Usage</h2>
+        <div class="value">{{ cpu }}</div>
+    </div>
+
+    <div class="card">
+        <h2>RAM Usage</h2>
+        <div class="value">{{ ram }}</div>
+    </div>
+
+    <div class="card">
+        <h2>Disk Usage</h2>
+        <div class="value">{{ disk }}</div>
+    </div>
+
+    <div class="card">
+        <h2>Uptime</h2>
+        <div class="value">{{ uptime }}</div>
+    </div>
+
+</div>
+
+<div class="footer">
+
+<p>Auto-refreshes every 2 seconds</p>
+
+</div>
+
+</body>
+</html>
+"""
+
+# =========================================================
+# ROUTE
+# =========================================================
+@app.route("/")
+def home():
+
+    return render_template_string(
+
+        HTML,
+
+        ip=get_ip(),
+
+        temp=get_cpu_temp(),
+
+        cpu=get_cpu_usage(),
+
+        ram=get_ram_usage(),
+
+        disk=get_disk_usage(),
+
+        uptime=get_uptime()
+    )
+
+# =========================================================
+# MAIN
+# =========================================================
+if __name__ == "__main__":
+
+    print("Starting Raspberry Pi Dashboard...")
+    print(f"Open browser: http://{get_ip()}:5000")
+
+    app.run(
+
+        host="0.0.0.0",
+
+        port=5000,
+
+        debug=False
+    )
