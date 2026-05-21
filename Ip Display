@@ -1,0 +1,70 @@
+from RPLCD.i2c import CharLCD
+import socket
+import time
+
+# =========================================================
+# GET RASPBERRY PI IP ADDRESS
+# =========================================================
+def get_ip():
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    try:
+
+        s.connect(("8.8.8.8", 80))
+
+        ip = s.getsockname()[0]
+
+    except:
+
+        ip = "No Network"
+
+    finally:
+
+        s.close()
+
+    return ip
+
+# =========================================================
+# LCD SETUP
+# =========================================================
+# Common I2C addresses:
+# 0x27 or 0x3F
+
+lcd = CharLCD(
+
+    i2c_expander='PCF8574',
+
+    address=0x27,
+
+    port=1,
+
+    cols=16,
+
+    rows=2,
+
+    dotsize=8
+)
+
+# =========================================================
+# DISPLAY MESSAGE
+# =========================================================
+lcd.clear()
+
+lcd.write_string("Raspberry Pi IP")
+
+lcd.cursor_pos = (1, 0)
+
+lcd.write_string(get_ip())
+
+# =========================================================
+# KEEP PROGRAM RUNNING
+# =========================================================
+try:
+
+    while True:
+        time.sleep(1)
+
+except KeyboardInterrupt:
+
+    lcd.clear()
